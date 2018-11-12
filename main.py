@@ -12,12 +12,12 @@ from keras.layers import (
 
 def build_model( env ):
     initial = layer = Input(env.observation_space.shape)
-    for size in [1023,1023,1023,256]:
+    for size in [63,63,15]:
         layer = Dense(size)(layer)
         layer = Activation('relu')(layer)
-        layer = Dropout(.3)(layer)
+        # layer = Dropout(.3)(layer)
     layer = Dense(env.action_space.n)(layer)
-    layer = Activation('softmax')(layer)
+    layer = Activation('linear')(layer)
     model = Model(initial,layer)
     model.compile(
         'adam',
@@ -32,15 +32,18 @@ def run_game( env, model ):
     history = []
 
     overall_reward = 0
+    choices = []
     while not done:
         env.render()
-        if np.random.random() < .99:
+        if np.random.random() > .99:
             action = env.action_space.sample()
             random_trial = True
         else:
             state = np.array(state,'f').reshape((1,-1))
-            action = np.argmax( model.predict(state) )
+            action_weights = model.predict(state)
+            action = np.argmax( action_weights )
             random_trial = False
+        choices.append(action)
         new_state,reward,done,_ = env.step(action)
         overall_reward += reward
         history.append({
@@ -52,6 +55,7 @@ def run_game( env, model ):
             'done': done,
         })
     # history = apply_decay(history)
+    # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
 
 def apply_decay(history, decay = 0.01):
@@ -83,7 +87,7 @@ def train_model( model, epoch_history, env, batch_size=256):
             action_reward = np.zeros((env.action_space.n,), 'f')
             action_reward[record['action']] = record['reward']
             actions[index] = action_reward
-        model.train_on_batch(
+        model.fit(
             states, 
             actions,
         )
@@ -95,7 +99,7 @@ def main():
     for epoch in range(200):
         overall_history = []
         scores = []
-        for i in range(200):
+        for i in range(1000):
             history = run_game( env, model )
             overall_history.extend( history )
             scores.append(history[-1]['reward'])
