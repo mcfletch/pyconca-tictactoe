@@ -29,21 +29,50 @@ def build_model( env ):
 def run_game( env, model ):
     done = False 
     state = env.reset()
+    history = []
     while not done:
         env.render()
         if np.random.random() < 0.1:
             action = env.action_space.sample()
+            random_trial = True
         else:
             state = np.array(state,'f').reshape((1,-1))
             action = np.argmax( model.predict(state) )
-        state,reward,done,_ = env.step(action)
+            random_trial = False
+        new_state,reward,done,_ = env.step(action)
+        history.append({
+            'state': state,
+            'new_state': new_state,
+            'action': action,
+            'random_trial': random_trial,
+            'reward': reward,
+            'done': done,
+        })
+    history = apply_decay(history)
+    return history
 
+def apply_decay(history, decay = 0.01):
+    if history:
+        final_reward = history[-1]['reward']
+        result = [
+            record.copy().update({
+                'reward': record.get('reward', 0) + (decay * neg_index * final_reward)
+            })
+            for neg_index,record in enumerate(history[::-1])
+        ]
+        return result 
+    return history 
 
 def main():
     env = gym.make('CartPole-v1')
     model = build_model( env )
-    for i in range(700):
-        run_game( env, model )
+    for epoch in range(200):
+        overall_history = []
+        for i in range(200):
+            history = run_game( env, model )
+            overall_history.append( history )
+        #train_model( model, history )
+
 
 
 if __name__ == "__main__":
