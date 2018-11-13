@@ -10,7 +10,14 @@ from keras.layers import (
     Activation,
 )
 
+def predict(model, state):
+    """Predict a single state's future reward"""
+    state = np.array(state,'f').reshape((1,-1))
+    action_weights = model.predict(state)
+    return action_weights[0]
+
 def build_model( env ):
+    """Build a Q function that predicts reward for a given state"""
     initial = layer = Input(env.observation_space.shape)
     for size in [63,15,]:
         layer = Dense(size)(layer)
@@ -23,8 +30,6 @@ def build_model( env ):
         'mse'
     )
     return model
-
-
 
 
 def run_game( env, model, epoch=0, exploit=.9 ):
@@ -41,7 +46,7 @@ def run_game( env, model, epoch=0, exploit=.9 ):
             random_trial = True
         else:
             state = np.array(state,'f').reshape((1,-1))
-            action_weights = model.predict(state)
+            action_weights = predict( model, state)
             action = np.argmax( action_weights )
             random_trial = False
         choices.append(action)
@@ -57,20 +62,8 @@ def run_game( env, model, epoch=0, exploit=.9 ):
             'done': done,
         })
         state = new_state
-    history = apply_decay(history)
     # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
-
-def apply_decay(history, decay = 0.01):
-    if history:
-        final_reward = history[-1]['overall_reward']
-        result = []
-        for neg_index,record in enumerate(history[::-1][1:]):
-            record = record.copy()
-            record['reward'] = record.get('reward', 0) + ((1.0-(decay * neg_index)) * final_reward)
-            result.append(record)
-        return result[::-1]
-    return history 
 
 def generate_batches(epoch_history, batch_size):
     np.random.shuffle(epoch_history)
@@ -86,8 +79,13 @@ def train_model( model, epoch_history, env, batch_size=1024):
             break
         for index,record in enumerate(batch):
             states[index] = record['state']
-            action_reward = np.zeros((env.action_space.n,), 'f')
-            action_reward[record['action']] = record['reward']
+            action_reward = predict(model,record['state'])
+            if not record['done']:
+                action_reward[record['action']] = record['reward'] + .95 * np.max(
+                    predict(model,record['new_state'])
+                )
+            else:
+                action_reward[record['action']] = record['reward']
             actions[index] = action_reward
         model.fit(
             states, 
@@ -111,7 +109,7 @@ def main():
         overall_history = []
         epoch_scores = []
         exploit = 1.0 - np.log10(epoch)
-        while len(overall_history) < (1024*10):
+        while len(overall_history) < (64):
             history = run_game( env, model, epoch, exploit )
             score = history[-1]['overall_reward']
             epoch_scores.append(score)
