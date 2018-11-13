@@ -30,7 +30,13 @@ def run_game( env, model, epoch=0 ):
     state = env.reset()
     history = []
 
-    explore = .99 ** (epoch*2)
+    explore = np.max(( 
+        np.min( (
+            .99,
+            np.cos(epoch*.02*np.pi)
+        )),
+        0.05
+    ))
     overall_reward = 0
     choices = []
     while not done:
@@ -119,6 +125,8 @@ def main():
                 insort_left(scores,(score,history))
                 del scores[:-100]
                 overall_history.extend( history )
+            elif score >= 100:
+                print('O',end='')
             else:
                 print('.',end='')
         print('Epoch Score: ',np.mean(epoch_scores))
