@@ -3,6 +3,7 @@ import gym
 import numpy as np
 import bisect
 import random
+import os
 from collections import deque
 from keras.models import Model
 from keras.layers import (
@@ -107,9 +108,12 @@ def insort_left(target, record):
     target.append(record)
     return
 
-def main():
-    env = gym.make('CartPole-v1')
+def main(env_name='CartPole-v1'):
+    env = gym.make(env_name)
     model = build_model( env )
+    filename = '%s-weights.hd5'%(env_name)
+    if os.path.exists(filename):
+        model.load_weights(filename)
     scores = deque(maxlen=100)
     overall_history = []
     epsilon_decay = .02
@@ -133,10 +137,12 @@ def main():
         overall_history.extend( history )
         train_model( model, overall_history, env, batch_size=64 )
         if not epoch % 100:
-            print('Avg Score on last 100 tests: ',np.mean(scores),exploit)
-        # for _,history in scores:
-        #     overall_history.extend(history)
-
+            avg = np.mean(scores)
+            print('Avg Score on last 100 tests: ', avg)
+            if avg > 195:
+                print('Success at epoch %s'%(epoch,))
+                model.save_weights(filename)
+                return
 
 
 
