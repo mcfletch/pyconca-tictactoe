@@ -12,10 +12,9 @@ from keras.layers import (
 
 def build_model( env ):
     initial = layer = Input(env.observation_space.shape)
-    for size in [63,63,15]:
+    for size in [63,63]:
         layer = Dense(size)(layer)
         layer = Activation('relu')(layer)
-        # layer = Dropout(.3)(layer)
     layer = Dense(env.action_space.n)(layer)
     layer = Activation('linear')(layer)
     model = Model(initial,layer)
@@ -26,16 +25,17 @@ def build_model( env ):
     return model
 
 
-def run_game( env, model ):
+def run_game( env, model, epoch=0 ):
     done = False 
     state = env.reset()
     history = []
 
+    explore = .5 ** epoch # 1, .5, .25, ...
     overall_reward = 0
     choices = []
     while not done:
         env.render()
-        if np.random.random() > .99:
+        if np.random.random() < explore:
             action = env.action_space.sample()
             random_trial = True
         else:
@@ -51,23 +51,23 @@ def run_game( env, model ):
             'new_state': new_state,
             'action': action,
             'random_trial': random_trial,
-            'reward': overall_reward,
+            'overall_reward': overall_reward,
+            'reward': reward,
             'done': done,
         })
-    # history = apply_decay(history)
+    history = apply_decay(history)
     # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
 
 def apply_decay(history, decay = 0.01):
     if history:
-        final_reward = history[-1]['reward']
+        final_reward = history[-1]['overall_reward']
         result = []
         for neg_index,record in enumerate(history[::-1][1:]):
             record = record.copy()
-            record['reward'] = record.get('reward', 0) + (1.0-(decay * neg_index) * final_reward)
+            record['reward'] = record.get('reward', 0) + ((1.0-(decay * neg_index)) * final_reward)
             result.append(record)
-        print([record['reward'] for record in result])
-        return result 
+        return result[::-1]
     return history 
 
 def generate_batches(epoch_history, batch_size):
@@ -96,14 +96,20 @@ def train_model( model, epoch_history, env, batch_size=256):
 def main():
     env = gym.make('CartPole-v1')
     model = build_model( env )
+    scores = []
     for epoch in range(200):
         overall_history = []
-        scores = []
-        for i in range(1000):
+        epoch_scores = []
+        while len(overall_history) < 5000:
             history = run_game( env, model )
-            overall_history.extend( history )
-            scores.append(history[-1]['reward'])
-        print('Epoch Score: ',np.mean(scores))
+            score = history[-1]['overall_reward']
+            epoch_scores.append(score)
+            if not scores or score > scores[-500:][0]:
+                print(f'Score: {score: 3.1f}')
+                scores.append(score)
+                scores.sort()
+                overall_history.extend( history )
+        print('Epoch Score: ',np.mean(epoch_scores))
         train_model( model, overall_history, env )
 
 
