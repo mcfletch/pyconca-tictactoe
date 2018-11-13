@@ -62,6 +62,7 @@ def run_game( env, model, epoch=0 ):
             'reward': reward,
             'done': done,
         })
+        state = new_state
     history = apply_decay(history)
     # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
