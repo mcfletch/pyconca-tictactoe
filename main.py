@@ -4,6 +4,7 @@ import numpy as np
 import bisect
 import random
 import os
+import argparse
 from collections import deque
 from keras.models import Model
 from keras.layers import (
@@ -20,7 +21,14 @@ def predict(model, state):
     return action_weights[0]
 
 def build_model( env ):
-    """Build a Q function that predicts reward for a given state"""
+    """Build a Q function that predicts reward for a given state
+    
+    Note here that we see two *different* values showing up in the
+    result of the Q function. The argmax (highest value's index)
+    is the "action to take to maximize expected reward" while the
+    max (highest value) is loosely corresponding to "expected reward"
+    for the given state.
+    """
     initial = layer = Input(env.observation_space.shape)
     for size in [63,15,]:
         layer = Dense(size)(layer)
@@ -71,12 +79,22 @@ def run_game( env, model, epoch=0, exploit=.9 ):
     return history
 
 def generate_batches(epoch_history, batch_size):
-    yield random.sample(epoch_history, min([len(epoch_history),batch_size]))
-    # while epoch_history:
-    #     yield epoch_history[:batch_size]
-    #     epoch_history = epoch_history[batch_size:]
+    """Key insight here:
 
-def train_model( model, epoch_history, env, batch_size=1024):
+    Deep RL seems to want to have lots of very rapid feedback at the start
+    of the process, so during completely random search, we're looking to
+    push the weights around immediately, so while we normally (supervised 
+    learning, etc) want to process big batches of lots of data, here we're
+    doing very small batches that *sample* across the whole data-set.
+
+    As we progress, we include the early trials in the set of sampled
+    data, so they will be sampled more frequently than the current values,
+    but they are not all sampled N times, they just have a higher sampling
+    frequency than the latest/most recent trials.
+    """
+    yield random.sample(epoch_history, min([len(epoch_history),batch_size]))
+
+def train_model( model, epoch_history, env, batch_size=64):
     states = np.zeros((batch_size,)+env.observation_space.shape,'f')
     actions = np.zeros((batch_size,env.action_space.n),'f')
     for batch in generate_batches(epoch_history, batch_size):
@@ -99,21 +117,12 @@ def train_model( model, epoch_history, env, batch_size=1024):
             verbose=0
         )
 
-def insort_left(target, record):
-    """Insort left *only* comparing record[0] values"""
-    for i in range(len(target)):
-        if target[i][0] > record[0]:
-            target.insert(i,record)
-            return 
-    target.append(record)
-    return
-
 def verify(env, model):
     history = run_game(env, model, epoch=0, exploit=1.0)
     score = history[-1]['overall_reward']
     return score
 
-def main(env_name='CartPole-v1'):
+def run(env_name='CartPole-v1',initial_epsilon=0.995):
     env = gym.make(env_name)
     model = build_model( env )
     filename = '%s-weights.hd5'%(env_name)
@@ -124,7 +133,8 @@ def main(env_name='CartPole-v1'):
     epsilon_decay = .02
     epsilon_min = 0.05
     epsilon_max = .995
-    epsilon = epsilon_max
+    epsilon = initial_epsilon
+
     for epoch in range(10000):
         epoch_scores = []
         epsilon = np.max([
@@ -157,7 +167,28 @@ def main(env_name='CartPole-v1'):
                 ))
                 return verification
 
+def get_options():
+    parser = argparse.ArgumentParser(
+        description = 'Run a deep reinforcement learning task on an OpenAI environment',
+    )
+    parser.add_argument(
+        '-e','--environment',
+        default = 'CartPole-v1',
+        help = 'OpenAI Gym environment to run'
+    )
+    parser.add_argument(
+        '--epsilon',
+        default=.995,
+        help = 'Initial epsilon value (1 meaning "explore on every step" and 0 meaning "just exploit your knowledge")',
+        type=float,
+    )
+    return parser
 
+
+def main():
+    parser = get_options()
+    options = parser.parse_args()
+    return run(options.environment,initial_epsilon=options.epsilon)
 
 if __name__ == "__main__":
     main()
