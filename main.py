@@ -147,7 +147,6 @@ def main(env_name='CartPole-v1'):
             if avg > 195:
                 print('Success at epoch %s'%(epoch,))
                 model.save_weights(filename)
-                print('Verification...')
                 verification = [
                     verify(env, model)
                     for i in range(20)
