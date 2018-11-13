@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 import gym
 import numpy as np
-
+import bisect
 from keras.models import Model
 from keras.layers import (
     Dense, 
@@ -30,11 +30,12 @@ def run_game( env, model, epoch=0 ):
     state = env.reset()
     history = []
 
-    explore = .5 ** epoch # 1, .5, .25, ...
+    explore = .99 ** (epoch*2)
     overall_reward = 0
     choices = []
     while not done:
-        env.render()
+        if epoch and not epoch%10:
+            env.render()
         if np.random.random() < explore:
             action = env.action_space.sample()
             random_trial = True
@@ -76,7 +77,7 @@ def generate_batches(epoch_history, batch_size):
         yield epoch_history[:batch_size]
         epoch_history = epoch_history[batch_size:]
 
-def train_model( model, epoch_history, env, batch_size=256):
+def train_model( model, epoch_history, env, batch_size=1024):
     states = np.zeros((batch_size,)+env.observation_space.shape,'f')
     actions = np.zeros((batch_size,env.action_space.n),'f')
     for batch in generate_batches(epoch_history, batch_size):
@@ -92,6 +93,14 @@ def train_model( model, epoch_history, env, batch_size=256):
             actions,
         )
 
+def insort_left(target, record):
+    """Insort left *only* comparing record[0] values"""
+    for i in range(len(target)):
+        if target[i][0] > record[0]:
+            target.insert(i,record)
+            return 
+    target.append(record)
+    return
 
 def main():
     env = gym.make('CartPole-v1')
@@ -100,16 +109,21 @@ def main():
     for epoch in range(200):
         overall_history = []
         epoch_scores = []
-        while len(overall_history) < 5000:
-            history = run_game( env, model )
+        while len(overall_history) < (1024*10):
+            history = run_game( env, model, epoch )
             score = history[-1]['overall_reward']
             epoch_scores.append(score)
-            if not scores or score > scores[-500:][0]:
+            if not scores or score > scores[0][0]:
                 print(f'Score: {score: 3.1f}')
-                scores.append(score)
-                scores.sort()
+                # Numpy arrays are pedantic about allowing comparisons with bisect, sigh
+                insort_left(scores,(score,history))
+                del scores[:-100]
                 overall_history.extend( history )
+            else:
+                print('.',end='')
         print('Epoch Score: ',np.mean(epoch_scores))
+        for _,history in scores:
+            overall_history.extend(history)
         train_model( model, overall_history, env )
 
 
