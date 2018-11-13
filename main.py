@@ -85,6 +85,7 @@ def train_model( model, epoch_history, env, batch_size=1024):
                     predict(model,record['new_state'])
                 )
             else:
+                assert not np.max(action_reward) > 1.0, action_reward
                 action_reward[record['action']] = record['reward']
             actions[index] = action_reward
         model.fit(
