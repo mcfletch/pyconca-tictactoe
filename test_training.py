@@ -52,7 +52,7 @@ class TestNumerics(unittest.TestCase):
                     'new_state': np.array(new_state,'f'),
                     'action': action,
                     'done': i >= len(r),
-                    'reward': 1.0 if i < len(r)-1 else final_reward
+                    'reward': final_reward
                 }
                 results.append(record)
             assert results[-1]['reward'] == final_reward

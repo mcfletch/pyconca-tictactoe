@@ -2,6 +2,8 @@
 import gym
 import numpy as np
 import bisect
+import random
+from collections import deque
 from keras.models import Model
 from keras.layers import (
     Dense, 
@@ -40,7 +42,8 @@ def run_game( env, model, epoch=0, exploit=.9 ):
     overall_reward = 0
     choices = []
     while not done:
-        env.render()
+        if not epoch % 100:
+            env.render()
         if np.random.random() > exploit:
             action = env.action_space.sample()
             random_trial = True
@@ -62,14 +65,15 @@ def run_game( env, model, epoch=0, exploit=.9 ):
             'done': done,
         })
         state = new_state
+        # exploit *= max((.995,exploit*1.1))
     # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
 
 def generate_batches(epoch_history, batch_size):
-    np.random.shuffle(epoch_history)
-    while epoch_history:
-        yield epoch_history[:batch_size]
-        epoch_history = epoch_history[batch_size:]
+    yield random.sample(epoch_history, min([len(epoch_history),batch_size]))
+    # while epoch_history:
+    #     yield epoch_history[:batch_size]
+    #     epoch_history = epoch_history[batch_size:]
 
 def train_model( model, epoch_history, env, batch_size=1024):
     states = np.zeros((batch_size,)+env.observation_space.shape,'f')
@@ -81,16 +85,17 @@ def train_model( model, epoch_history, env, batch_size=1024):
             states[index] = record['state']
             action_reward = predict(model,record['state'])
             if not record['done']:
-                action_reward[record['action']] = record['reward'] + .95 * np.max(
+                action_reward[record['action']] = record['reward'] + 1.0 * np.max(
                     predict(model,record['new_state'])
                 )
             else:
-                assert not np.max(action_reward) > 1.0, action_reward
+                # assert not np.max(action_reward) > 1.0, action_reward
                 action_reward[record['action']] = record['reward']
             actions[index] = action_reward
         model.fit(
             states, 
             actions,
+            verbose=0
         )
 
 def insort_left(target, record):
@@ -105,29 +110,32 @@ def insort_left(target, record):
 def main():
     env = gym.make('CartPole-v1')
     model = build_model( env )
-    scores = []
-    for epoch in range(200):
-        overall_history = []
+    scores = deque(maxlen=100)
+    overall_history = []
+    epsilon_decay = .02
+    epsilon_min = 0.05
+    epsilon_max = .995
+    epsilon = epsilon_max
+    for epoch in range(10000):
         epoch_scores = []
-        exploit = 1.0 - np.log10(epoch)
-        while len(overall_history) < (64):
-            history = run_game( env, model, epoch, exploit )
-            score = history[-1]['overall_reward']
-            epoch_scores.append(score)
-            if not scores or score > scores[0][0]:
-                print(f'Score: {score: 3.1f}')
-                # Numpy arrays are pedantic about allowing comparisons with bisect, sigh
-                insort_left(scores,(score,history))
-                del scores[:-100]
-                overall_history.extend( history )
-            elif score >= 100:
-                print('O',end='')
-            else:
-                print('.',end='')
-        print('Epoch Score: ',np.mean(epoch_scores))
-        for _,history in scores:
-            overall_history.extend(history)
-        train_model( model, overall_history, env )
+        epsilon = np.max([
+            epsilon_min, np.min([
+                epsilon, 
+                1.0 - np.log10((epoch + 1) * epsilon_decay ),
+                epsilon_max,
+            ]),
+        ])
+        exploit = 1.0- epsilon
+        # while len(overall_history) < :
+        history = run_game( env, model, epoch, exploit )
+        score = history[-1]['overall_reward']
+        scores.append(score)
+        overall_history.extend( history )
+        train_model( model, overall_history, env, batch_size=64 )
+        if not epoch % 100:
+            print('Avg Score on last 100 tests: ',np.mean(scores),exploit)
+        # for _,history in scores:
+        #     overall_history.extend(history)
 
 
 
