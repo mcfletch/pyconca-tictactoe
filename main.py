@@ -108,6 +108,11 @@ def insort_left(target, record):
     target.append(record)
     return
 
+def verify(env, model):
+    history = run_game(env, model, epoch=0, exploit=1.0)
+    score = history[-1]['overall_reward']
+    return score
+
 def main(env_name='CartPole-v1'):
     env = gym.make(env_name)
     model = build_model( env )
@@ -142,7 +147,16 @@ def main(env_name='CartPole-v1'):
             if avg > 195:
                 print('Success at epoch %s'%(epoch,))
                 model.save_weights(filename)
-                return
+                print('Verification...')
+                verification = [
+                    verify(env, model)
+                    for i in range(20)
+                ]
+                print('Verification: mean %s stddev=%s'%(
+                    np.mean(verification),
+                    np.std(verification),
+                ))
+                return verification
 
 
 
