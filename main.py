@@ -12,7 +12,7 @@ from keras.layers import (
 
 def build_model( env ):
     initial = layer = Input(env.observation_space.shape)
-    for size in [63,63]:
+    for size in [63,15,]:
         layer = Dense(size)(layer)
         layer = Activation('relu')(layer)
     layer = Dense(env.action_space.n)(layer)
@@ -25,18 +25,18 @@ def build_model( env ):
     return model
 
 
-def run_game( env, model, epoch=0 ):
+
+
+def run_game( env, model, epoch=0, exploit=.9 ):
     done = False 
     state = env.reset()
     history = []
 
-    explore = .99 ** (epoch*2)
     overall_reward = 0
     choices = []
     while not done:
-        if epoch and not epoch%10:
-            env.render()
-        if np.random.random() < explore:
+        env.render()
+        if np.random.random() > exploit:
             action = env.action_space.sample()
             random_trial = True
         else:
@@ -56,6 +56,7 @@ def run_game( env, model, epoch=0 ):
             'reward': reward,
             'done': done,
         })
+        state = new_state
     history = apply_decay(history)
     # print('%s/%s chose 0'%(choices.count(0), len(choices)))
     return history
@@ -109,8 +110,9 @@ def main():
     for epoch in range(200):
         overall_history = []
         epoch_scores = []
+        exploit = 1.0 - np.log10(epoch)
         while len(overall_history) < (1024*10):
-            history = run_game( env, model, epoch )
+            history = run_game( env, model, epoch, exploit )
             score = history[-1]['overall_reward']
             epoch_scores.append(score)
             if not scores or score > scores[0][0]:
@@ -119,6 +121,8 @@ def main():
                 insort_left(scores,(score,history))
                 del scores[:-100]
                 overall_history.extend( history )
+            elif score >= 100:
+                print('O',end='')
             else:
                 print('.',end='')
         print('Epoch Score: ',np.mean(epoch_scores))
